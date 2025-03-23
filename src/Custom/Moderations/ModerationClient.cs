@@ -156,6 +156,66 @@ public partial class ModerationClient
         ClientResult result = ClassifyText(content, cancellationToken.ToRequestOptions());
         return ClientResult.FromValue((ModerationResultCollection)result, result.GetRawResponse());
     }
+    
+    public virtual async Task<ClientResult<ModerationResult>> ClassifyImageAsync(string image, CancellationToken cancellationToken = default)
+    {
+        Argument.AssertNotNullOrEmpty(image, nameof(image));
+
+        var input = new[]{
+            new {
+                type = "image_url",
+                image_url = new
+                {
+                    url = image
+                }
+            }};
+
+        ModerationOptions options = new();
+        CreateModerationOptions(input, ref options);
+
+        using BinaryContent content = options;
+        ClientResult result = await ClassifyTextAsync(content, cancellationToken.ToRequestOptions()).ConfigureAwait(false);
+        return ClientResult.FromValue(((ModerationResultCollection)result).FirstOrDefault(), result.GetRawResponse());
+    }
+
+    public virtual async Task<ClientResult<ModerationResult>> ClassifyMixedContentAsync(IEnumerable<string> inputs, CancellationToken cancellationToken = default)
+    {
+        Argument.AssertNotNullOrEmpty(inputs, nameof(inputs));
+
+        var input = new List<object>();
+        foreach (var str in inputs)
+        {
+            if (!string.IsNullOrEmpty(str) && str.StartsWith("data:image/"))
+            {
+                input.Add(
+                    new
+                    {
+                        type = "image_url",
+                        image_url = new
+                        {
+                            url = str
+                        }
+                    });
+            }
+            else
+            {
+                input.Add(
+                    new
+                    {
+                        type = "text",
+                        text = str
+                    }
+                );
+            }
+        }
+        
+        ModerationOptions options = new();
+        CreateModerationOptions(input, ref options);
+
+        using BinaryContent content = options;
+        ClientResult result = await ClassifyTextAsync(content, cancellationToken.ToRequestOptions()).ConfigureAwait(false);
+        return ClientResult.FromValue(((ModerationResultCollection)result).FirstOrDefault(), result.GetRawResponse());
+    }
 
     private void CreateModerationOptions(string input, ref ModerationOptions options)
     {
@@ -187,4 +247,18 @@ public partial class ModerationClient
         options.Input = BinaryData.FromBytes(stream.ToArray());
         options.Model = _model;
     }
+    
+    private void CreateModerationOptions(object input, ref ModerationOptions options)
+    {
+        using MemoryStream stream = new();
+        using Utf8JsonWriter writer = new(stream);
+
+        JsonSerializer.Serialize(writer, input);
+        writer.Flush();
+
+        options.Input = BinaryData.FromBytes(stream.ToArray());
+        options.Model = _model;
+    }
 }
+
+
